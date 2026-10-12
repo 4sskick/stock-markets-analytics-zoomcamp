@@ -4,6 +4,14 @@ In this homework, we're going to combine data from various sources to process it
 
 If not stated otherwise, please use the code snippets covered in the livestream to download and process the data.
 
+> **Note on environment differences (Windows / local Jupyter / newer library versions):**
+> The livestream notebook was recorded in Google Colab with a specific set of package versions. If you're running locally (especially on Windows) or with more recent `pandas`/`yfinance`/`pyarrow` versions, you may hit a few friction points that are not related to your logic:
+> - **`yfinance` MultiIndex columns:** recent `yfinance` versions return `MultiIndex` columns even for single-ticker downloads, so something like `df["Close"].iloc[0]` returns a `Series` instead of a scalar, which breaks `float()` calls and arithmetic. Flatten the columns right after each download, e.g. `df.columns = df.columns.get_level_values(0)` (or `df = df.squeeze()` for single-ticker frames), before doing any further processing.
+> - **`pandas.read_html()` on Windows/newer `pandas`+`lxml`:** calling `pandas.read_html(resp.text)` directly on the response text can raise an `OSError` in this combination. Wrap the HTML string in a buffer instead: `pandas.read_html(io.StringIO(resp.text))`. Apply the same fix everywhere you scrape IPO tables from HTML.
+> - **`ArrowKeyError: A type extension with name pandas.period already defined`:** this can happen when calling `.to_parquet()` a second time in the same long-running kernel session — it's a known `pandas`/`pyarrow` extension-registration issue. If you hit it while re-running a cell during debugging, restart the kernel before saving again.
+> - **Different IPO data source:** the livestream/lecture notebook's `get_ipos_by_year()` helper pulls data from `stockanalysis.com`, while **this homework (Q1/Q2) explicitly requires `iposcoop.com`** — a different site with different columns/data. Make sure you're scraping the URLs given in each question below, not the lecture's source.
+> - **Expected row counts (Q1/Q2/Q3) can vary slightly:** the source data isn't perfectly stable — the set of withdrawn IPOs can shift a bit over time, and `yfinance` may not always return data for exactly the same number of tickers (some delisted names come and go). So you may see counts that are a little off from the numbers mentioned in the steps below (e.g., off by one or a few). Since Q3 reuses the same downloaded IPO stock data as Q2, this same variability can carry over into Q3 as well. This is expected and fine — we're asking about aggregated statistics, and the answer options are spaced far enough apart that this natural variation shouldn't change which option is correct.
+
 ---
 ### Question 1: [IPO] Withdrawn IPOs by Company Type
 
@@ -21,6 +29,8 @@ From the Recently Filed IPO list ([iposcoop.com/ipos-recently-filed](https://www
     - "Ltd" or "Limited" -> Limited
     - "Holdings" or "Holding" -> Holdings
     - Others -> Other
+
+    **Note:** The order of the rules above is important — use the first matching rule. For example, "EUPEC International Group Ltd." will be classified as `Group` (not `Limited`), since the "Group" rule appears before the "Ltd"/"Limited" rule. Also, matches must be exact: "Xinxu Copper Industry Technology Ltd." will be classified as `Limited` (not `Technologies`), because "Technology" does not match the "Technologies" pattern.
 3. **Price Parsing:** Define a new field **Avg_price** by parsing the 'Price Low' and 'Price High' fields. Create a function to extract numeric values (e.g., '$8.00' -> 8.0) and calculate the average between low and high. Handle '-' or missing values as `None`/`NaN`.
 4. **Numeric Conversion:** Convert 'Shares (millions)' and 'Est \$ Vol (millions)' to numeric formats, cleaning currency symbols (\$) and commas where necessary.
 5. **Value Calculation:** Create a new column **Shares_offered_value**:
